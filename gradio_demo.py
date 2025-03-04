@@ -12,8 +12,21 @@ from util.utils import check_ocr_box, get_yolo_model, get_caption_model_processo
 import torch
 from PIL import Image
 
+import torch
+print(f"CUDA available: {torch.cuda.is_available()}")
+print(f"CUDA device count: {torch.cuda.device_count()}")
+if torch.cuda.is_available():
+    print(f"Current CUDA device: {torch.cuda.current_device()}")
+    print(f"CUDA device name: {torch.cuda.get_device_name()}")
+
+
+DEVICE = torch.device('cuda')
+
 yolo_model = get_yolo_model(model_path='weights/icon_detect/model.pt')
 caption_model_processor = get_caption_model_processor(model_name="florence2", model_name_or_path="weights/icon_caption_florence")
+yolo_model = yolo_model.to(DEVICE)
+if hasattr(caption_model_processor, 'model'):
+    caption_model_processor.model = caption_model_processor.model.to(DEVICE)
 # caption_model_processor = get_caption_model_processor(model_name="blip2", model_name_or_path="weights/icon_caption_blip2")
 
 MARKDOWN = """
@@ -27,11 +40,11 @@ MARKDOWN = """
 OmniParser is a screen parsing tool to convert general GUI screen to structured elements. 
 """
 
-DEVICE = torch.device('cuda')
+
 
 # @spaces.GPU
-# @torch.inference_mode()
-# @torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+@torch.inference_mode()
+@torch.autocast(device_type="cuda", dtype=torch.bfloat16)
 def process(
     image_input,
     box_threshold,
@@ -97,4 +110,4 @@ with gr.Blocks() as demo:
     )
 
 # demo.launch(debug=False, show_error=True, share=True)
-demo.launch(share=True, server_port=7861, server_name='0.0.0.0')
+demo.launch()

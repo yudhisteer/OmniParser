@@ -32,9 +32,7 @@ pip install -r requirements.txt
 
 Ensure you have the V2 weights downloaded in weights folder (ensure caption weights folder is called icon_caption_florence). If not download them with:
 ```
-   # download the model checkpoints to local directory OmniParser/weights/
-   for f in icon_detect/{train_args.yaml,model.pt,model.yaml} icon_caption/{config.json,generation_config.json,model.safetensors}; do huggingface-cli download microsoft/OmniParser-v2.0 "$f" --local-dir weights; done
-   mv weights/icon_caption weights/icon_caption_florence
+python -c "from huggingface_hub import hf_hub_download; import os; [hf_hub_download(repo_id='microsoft/OmniParser-v2.0', filename=f, local_dir='weights', repo_type='model') for f in ['icon_detect/train_args.yaml', 'icon_detect/model.pt', 'icon_detect/model.yaml', 'icon_caption/config.json', 'icon_caption/generation_config.json', 'icon_caption/model.safetensors']]"
 ```
 
 <!-- ## [deprecated]
