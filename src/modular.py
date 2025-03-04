@@ -203,7 +203,7 @@ class OmniParser:
         )
         cur_time_caption = time.time()
         self.logger.info(f"Caption time: {cur_time_caption - cur_time_ocr} seconds")
-        self.logger.info(f"Parsed content list: {parsed_content_list}")
+        # self.logger.info(f"Parsed content list: {parsed_content_list}")
         
         return parsed_content_list, dino_labled_img, image
     
@@ -245,6 +245,97 @@ class OmniParser:
             self.display_results(dino_labled_img)
         
         return parsed_content_list, image_path
+    
+    def get_midpoint_by_content(self, parsed_content_list, target_content):
+        """
+        Find the midpoint of a bounding box for a specific content item.
+        
+        Parameters:
+        - parsed_content_list: List of parsed content items from process_image or analyze_screenshot
+        - target_content: The content text to search for
+        
+        Returns:
+        - (x, y): Tuple containing the midpoint coordinates of the bounding box
+                 or None if content not found
+        """
+        for item in parsed_content_list:
+            if item.get('content') == target_content:
+                bbox = item.get('bbox')
+                if bbox and len(bbox) == 4:
+                    # Calculate midpoint of the bounding box [x1, y1, x2, y2]
+                    midpoint_x = (bbox[0] + bbox[2]) / 2
+                    midpoint_y = (bbox[1] + bbox[3]) / 2
+                    self.logger.info(f"Found midpoint for '{target_content}': ({midpoint_x}, {midpoint_y})")
+                    return midpoint_x, midpoint_y
+        
+        self.logger.warning(f"Content '{target_content}' not found in parsed content list")
+        return None
+    
+
+    def click_element_by_content(self, parsed_content_list, target_content, click_type='single', 
+                                move_duration=0.5, random_offset=5, pre_click_delay=0.2, post_click_delay=0.5):
+        """
+        Click on a UI element based on its content text.
+        
+        Parameters:
+        - parsed_content_list: List of parsed content items from process_image or analyze_screenshot
+        - target_content: The content text to search for
+        - click_type: Type of click - 'single', 'double', or 'right' (default: 'single')
+        - move_duration: Time taken for mouse movement in seconds (default: 0.5)
+        - random_offset: Random pixel offset to add to click position for more natural clicks (default: 5)
+        - pre_click_delay: Delay before clicking in seconds (default: 0.2)
+        - post_click_delay: Delay after clicking in seconds (default: 0.5)
+        
+        Returns:
+        - bool: True if element was found and clicked, False otherwise
+        """
+        # Get the midpoint coordinates
+        midpoint = self.get_midpoint_by_content(parsed_content_list, target_content)
+        if not midpoint:
+            return False
+        
+        x_rel, y_rel = midpoint
+        
+        # Get screen dimensions
+        screen_width, screen_height = pyautogui.size()
+        
+        # Convert relative coordinates to absolute screen coordinates
+        x_abs = int(x_rel * screen_width)
+        y_abs = int(y_rel * screen_height)
+        
+        # Add small random offset for more natural clicking if specified
+        if random_offset > 0:
+            import random
+            x_abs += random.randint(-random_offset, random_offset)
+            y_abs += random.randint(-random_offset, random_offset)
+        
+        # Move mouse to target
+        self.logger.info(f"Moving mouse to: ({x_abs}, {y_abs}) to click on '{target_content}'")
+        pyautogui.moveTo(x_abs, y_abs, duration=move_duration)
+        
+        # Optional pre-click delay
+        if pre_click_delay > 0:
+            time.sleep(pre_click_delay)
+        
+        # Perform the requested click type
+        if click_type == 'single':
+            pyautogui.click()
+            self.logger.info(f"Single click performed on '{target_content}'")
+        elif click_type == 'double':
+            pyautogui.doubleClick()
+            self.logger.info(f"Double click performed on '{target_content}'")
+        elif click_type == 'right':
+            pyautogui.rightClick()
+            self.logger.info(f"Right click performed on '{target_content}'")
+        else:
+            self.logger.warning(f"Unknown click type: {click_type}")
+            return False
+        
+        # Optional post-click delay
+        if post_click_delay > 0:
+            time.sleep(post_click_delay)
+            
+        return True
 
 
 
@@ -253,5 +344,15 @@ if __name__ == "__main__":
     parser = OmniParser()
     
     # Take and analyze a screenshot
-    parsed_content, image_path = parser.analyze_screenshot()
-    print("Parsed content: ", parsed_content)
+    parsed_content, image_path = parser.analyze_screenshot(delay=3, display=False)
+    # print("Parsed content: ", parsed_content, "\n")
+
+    # Find the midpoint of the "Settings" element
+    button = "Settings"
+    midpoint = parser.get_midpoint_by_content(parsed_content, button)
+    if midpoint:
+        x, y = midpoint
+        print(f"{button} midpoint: x={x}, y={y}")
+
+    # Click on the "Settings" element
+    parser.click_element_by_content(parsed_content, button)
