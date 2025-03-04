@@ -1,0 +1,9 @@
+=== 2025-03-03 20:13:41,433 === [INFO] === Starting OmniParser initialization... ===
+=== 2025-03-03 20:13:41,434 === [INFO] === CUDA available: True ===
+=== 2025-03-03 20:13:41,435 === [INFO] === CUDA device count: 1 ===
+=== 2025-03-03 20:13:41,435 === [INFO] === Current CUDA device: 0 ===
+=== 2025-03-03 20:13:41,436 === [INFO] === CUDA device name: NVIDIA GeForce RTX 3060 Laptop GPU ===
+=== 2025-03-03 20:13:41,436 === [INFO] === Loading YOLO model... ===
+=== 2025-03-03 20:13:41,530 === [INFO] === Loading caption model processor... ===
+=== 2025-03-03 20:13:51,840 === [INFO] === Models loaded successfully! ===
+=== 2025-03-03 20:13:51,842 === [INFO] === OmniParser initialization complete! ===
