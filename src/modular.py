@@ -246,6 +246,25 @@ class OmniParser:
         
         return parsed_content_list, image_path
     
+    def _normalize_text(self, text):
+        """
+        Normalize text for consistent matching by removing leading/trailing whitespace 
+        and converting to lowercase.
+        
+        Parameters:
+        - text: The text string to normalize
+        
+        Returns:
+        - Normalized text string
+        """
+        if text is None:
+            return ""
+        
+        # Strip whitespace and convert to lowercase
+        normalized = text.strip().lower()
+    
+        return normalized
+    
     def get_midpoint_by_content(self, parsed_content_list, target_content):
         """
         Find the midpoint of a bounding box for a specific content item.
@@ -258,8 +277,10 @@ class OmniParser:
         - (x, y): Tuple containing the midpoint coordinates of the bounding box
                  or None if content not found
         """
+        normalized_target_content = self._normalize_text(target_content)
         for item in parsed_content_list:
-            if item.get('content') == target_content:
+            normalized_item_content = self._normalize_text(item.get('content'))
+            if normalized_item_content == normalized_target_content:
                 bbox = item.get('bbox')
                 if bbox and len(bbox) == 4:
                     # Calculate midpoint of the bounding box [x1, y1, x2, y2]
@@ -345,14 +366,16 @@ if __name__ == "__main__":
     
     # Take and analyze a screenshot
     parsed_content, image_path = parser.analyze_screenshot(delay=3, display=False)
-    # print("Parsed content: ", parsed_content, "\n")
+    print("Parsed content: ", parsed_content, "\n")
 
     # Find the midpoint of the "Settings" element
-    button = "Settings"
-    midpoint = parser.get_midpoint_by_content(parsed_content, button)
-    if midpoint:
-        x, y = midpoint
-        print(f"{button} midpoint: x={x}, y={y}")
+    # BUTTON = "Video settings"
+    # midpoint = parser.get_midpoint_by_content(parsed_content, BUTTON)
+    # if midpoint:
+    #     x, y = midpoint
+    #     print(f"{BUTTON} midpoint: x={x}, y={y}")
+
+    # Settings -> Video settings -> Resolution
 
     # Click on the "Settings" element
-    parser.click_element_by_content(parsed_content, button)
+    # parser.click_element_by_content(parsed_content, BUTTON)
