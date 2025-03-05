@@ -1,66 +1,95 @@
+import os
 import gradio as gr
-import base64
-import io
+import threading
+import time
 from PIL import Image
 from modular import OmniParser
 
-def search_content(search_text):
-    """
-    Function to take a screenshot and highlight the searched content
-    
-    Parameters:
-    - search_text: The text to search for in the screenshot
-    
-    Returns:
-    - A PIL Image of the raw screenshot
-    """
-    # Initialize the OmniParser
-    parser = OmniParser()
-    
-    # Take a screenshot
-    image_path = parser.take_screenshot(delay=1)
-    
-    # Load the screenshot as a PIL Image
-    screenshot = Image.open(image_path)
-    
-    # Process the image to parse content (we'll need this for debugging)
-    parsed_content_list, _, _ = parser.process_image(image_path)
-    
-    # Log the search text and whether it was found
-    found = any(search_text.lower() in item.get('content', '').lower() for item in parsed_content_list)
-    print(f"Searching for: '{search_text}'")
-    print(f"Content found: {found}")
-    
-    return screenshot
+# Initialize the OmniParser
+parser = OmniParser()
 
-# Create the interface using gr.Interface
-app = gr.Interface(
-    fn=search_content,
-    inputs=gr.Textbox(
-        label="Text to search for",
-        placeholder="Enter text content to search for...",
-        lines=1
-    ),
-    outputs=gr.Image(
-        label="Screenshot with Highlighted Results",
-        type="pil"
-    ),
-    title="OmniParser Screenshot Search Tool",
-    description="Enter text to search for in a screenshot. The tool will capture your screen and highlight any matches.",
-    examples=["Button", "Menu", "Error", "Login"],
-    article="""
-    ### How to Use
-    1. Enter the text you want to search for in the screenshot
-    2. Press the Submit button
-    3. The tool will take a screenshot and highlight any matches
+screenshots_folder = "imgs"
+if not os.path.exists(screenshots_folder):
+    os.makedirs(screenshots_folder)
+
+def take_screenshot_and_process(target_text):
+    """
+    Take a screenshot and process it asynchronously.
+    Returns the path to the screenshot immediately.
+    Starts processing in the background.
+    """
+    # Take a screenshot and save it
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    filename = f"screenshot_{timestamp}.png"
+    image_path = parser.take_screenshot(filename=filename, folder=screenshots_folder, delay=3)
     
-    ### Tips
-    - Be specific with your search terms for better results
-    - The search is case-insensitive
-    - Try using examples from the buttons below the search box
-    """,
-    theme="default"
-)
+    # Start processing in a separate thread
+    def process_in_background():
+        try:
+            # Process the image to find elements
+            parsed_content_list, _, _ = parser.process_image(image_path)
+            
+            # Try to click on the specified element
+            success = parser.click_element_by_content(parsed_content_list, target_text)
+            
+            if not success:
+                print(f"Failed to find and click on element: '{target_text}'")
+        except Exception as e:
+            print(f"Error in background processing: {str(e)}")
+    
+    # Start the background thread
+    thread = threading.Thread(target=process_in_background)
+    thread.daemon = True
+    thread.start()
+    
+    return image_path
+
+def on_submit(target_text):
+    """
+    Handler for submit button. Takes and returns screenshot immediately,
+    while processing continues in the background.
+    """
+    if not target_text.strip():
+        return None, "Please enter a target text element."
+    
+    try:
+        # Take the screenshot and start processing
+        image_path = take_screenshot_and_process(target_text)
+        
+        return image_path, f"Screenshot taken. Looking for '{target_text}' element..."
+    except Exception as e:
+        return None, f"Error: {str(e)}"
+
+
+with gr.Blocks(title="OmniParser UI Automation") as app:
+    gr.Markdown("# OmniParser UI Automation")
+    gr.Markdown("Enter the text of an element to find and click on it.")
+    
+    with gr.Row():
+        # Left column - Input
+        with gr.Column(scale=1):
+            target_input = gr.Textbox(
+                label="Target Element Text",
+                placeholder="Enter text like 'Video settings'...",
+                lines=1
+            )
+            submit_btn = gr.Button("Take Screenshot & Process", variant="primary")
+            status_text = gr.Textbox(label="Status", interactive=False)
+        
+        # Right column - Screenshot display
+        with gr.Column(scale=2):
+            screenshot_display = gr.Image(
+                label="Screenshot",
+                type="filepath",
+                height=600
+            )
+    
+    # Connect the submit button to the handler function
+    submit_btn.click(
+        fn=on_submit,
+        inputs=[target_input],
+        outputs=[screenshot_display, status_text]
+    )
 
 if __name__ == "__main__":
-    app.launch()
+    app.launch(share=False)

@@ -369,13 +369,12 @@ if __name__ == "__main__":
     print("Parsed content: ", parsed_content, "\n")
 
     # Find the midpoint of the "Settings" element
-    # BUTTON = "Video settings"
-    # midpoint = parser.get_midpoint_by_content(parsed_content, BUTTON)
-    # if midpoint:
-    #     x, y = midpoint
-    #     print(f"{BUTTON} midpoint: x={x}, y={y}")
+    BUTTON = "Video settings"
+    midpoint = parser.get_midpoint_by_content(parsed_content, BUTTON)
+    if midpoint:
+        x, y = midpoint
+        print(f"{BUTTON} midpoint: x={x}, y={y}")
 
-    # Settings -> Video settings -> Resolution
 
     # Click on the "Settings" element
-    # parser.click_element_by_content(parsed_content, BUTTON)
+    parser.click_element_by_content(parsed_content, BUTTON)
