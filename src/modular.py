@@ -5,7 +5,8 @@ import logging
 import os
 import time
 import sys
-
+from openai import OpenAI
+from pydantic import BaseModel, Field
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -16,6 +17,12 @@ from PIL import Image
 
 from util.utils import (check_ocr_box, get_caption_model_processor,
                         get_som_labeled_img, get_yolo_model)
+
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+model = "gpt-4o-mini"
+
+
 
 
 class OmniParser:
@@ -265,32 +272,79 @@ class OmniParser:
     
         return normalized
     
-    def get_midpoint_by_content(self, parsed_content_list, target_content):
+    
+    def _get_button_location(self, client, model, parsed_content_list, target_content):
         """
-        Find the midpoint of a bounding box for a specific content item.
+        Extract the bounding box of a button using OpenAI's parse functionality.
         
         Parameters:
-        - parsed_content_list: List of parsed content items from process_image or analyze_screenshot
-        - target_content: The content text to search for
+        - client: OpenAI client instance
+        - model: The model to use for parsing
+        - parsed_content_list: List of parsed content items from OCR
+        - target_content: The button text to search for
         
         Returns:
-        - (x, y): Tuple containing the midpoint coordinates of the bounding box
-                 or None if content not found
+        - ButtonLocation object with bbox or None if not found
         """
-        normalized_target_content = self._normalize_text(target_content)
-        for item in parsed_content_list:
-            normalized_item_content = self._normalize_text(item.get('content'))
-            if normalized_item_content == normalized_target_content:
-                bbox = item.get('bbox')
-                if bbox and len(bbox) == 4:
-                    # Calculate midpoint of the bounding box [x1, y1, x2, y2]
-                    midpoint_x = (bbox[0] + bbox[2]) / 2
-                    midpoint_y = (bbox[1] + bbox[3]) / 2
-                    self.logger.info(f"Found midpoint for '{target_content}': ({midpoint_x}, {midpoint_y})")
-                    return midpoint_x, midpoint_y
+        class ButtonLocation(BaseModel):
+            bbox: list[float] = Field(description="Bounding box of button [x1, y1, x2, y2]")
+            
+        try:
+            completion = client.beta.chat.completions.parse(
+                model=model,
+                messages=[
+                    {"role": "system", "content": f"Extract the bounding box of the button from {parsed_content_list}. Find the closest match to '{target_content}' which makes sense. Return the bbox as [x1, y1, x2, y2]."},
+                    {"role": "user", "content": target_content},
+                ],
+                response_format=ButtonLocation,
+            )
+            return completion.choices[0].message.parsed
+        except Exception as e:
+            self.logger.error(f"Error extracting button location: {e}")
+            return None
         
-        self.logger.warning(f"Content '{target_content}' not found in parsed content list")
+    def _calculate_midpoint(self, bbox):
+        """
+        Calculate the midpoint of a bounding box.
+        
+        Parameters:
+        - bbox: List [x1, y1, x2, y2] representing the bounding box
+        
+        Returns:
+        - (x, y): Tuple containing the midpoint coordinates
+        """
+        if not bbox or len(bbox) != 4:
+            return None
+        
+        midpoint_x = (bbox[0] + bbox[2]) / 2
+        midpoint_y = (bbox[1] + bbox[3]) / 2
+        return (midpoint_x, midpoint_y)
+        
+
+    def get_midpoint_by_content(self, parsed_content_list, target_content):
+        """
+        Find the midpoint of a bounding box for a specific button.
+        
+        Parameters:
+        - client: OpenAI client instance
+        - model: The model to use for parsing
+        - parsed_content_list: List of parsed content items from OCR
+        - target_content: The button text to search for
+        
+        Returns:
+        - (x, y): Tuple containing the midpoint coordinates or None if not found
+        """
+        button_location = self._get_button_location(client, model, parsed_content_list, target_content)
+        
+        if button_location and hasattr(button_location, 'bbox'):
+            midpoint = self._calculate_midpoint(button_location.bbox)
+            self.logger.info(f"Found midpoint for '{target_content}': {midpoint}")
+            return midpoint
+        
+        self.logger.warning(f"Button '{target_content}' not found in parsed content list")
+
         return None
+
     
 
     def click_element_by_content(self, parsed_content_list, target_content, click_type='single', 
@@ -365,16 +419,21 @@ if __name__ == "__main__":
     parser = OmniParser()
     
     # Take and analyze a screenshot
-    parsed_content, image_path = parser.analyze_screenshot(delay=3, display=False)
-    print("Parsed content: ", parsed_content, "\n")
+    # parsed_content, image_path = parser.analyze_screenshot(delay=3, display=False)
+    # print("Parsed content: ", parsed_content, "\n")
+    parsed_content = [{'type': 'text', 'bbox': [0.046875, 0.009027778171002865, 0.076171875, 0.02916666679084301], 'interactivity': False, 'content': 'Camera', 'source': 'box_ocr_content_ocr'}, {'type': 'text', 'bbox': [0.03242187574505806, 0.4722222089767456, 0.05820312350988388, 0.49444442987442017], 'interactivity': False, 'content': 'About', 'source': 'box_ocr_content_ocr'}, {'type': 'text', 'bbox': [0.701953113079071, 0.4888888895511627, 0.736328125, 0.5145833492279053], 'interactivity': False, 'content': 'Preview', 'source': 'box_ocr_content_ocr'}, {'type': 'text', 'bbox': [0.06562499701976776, 0.5201388597488403, 0.09882812201976776, 0.5402777791023254], 'interactivity': False, 'content': 'Camera', 'source': 'box_ocr_content_ocr'}, {'type': 'text', 'bbox': [0.614453136920929, 0.5256944298744202, 0.668749988079071, 0.5513888597488403], 'interactivity': False, 'content': '2025.2501.1.0', 'source': 'box_ocr_content_ocr'}, {'type': 'text', 'bbox': [0.064453125, 0.5347222089767456, 0.1875, 0.5590277910232544], 'interactivity': False, 'content': ' 2025 Microsoft. All rights reserved.', 'source': 'box_ocr_content_ocr'}, {'type': 'text', 'bbox': [0.03125, 0.5826388597488403, 0.08945312350988388, 0.6083333492279053], 'interactivity': False, 'content': ' Send feedback', 'source': 'box_ocr_content_ocr'}, {'type': 'text', 'bbox': [0.03242187574505806, 0.6305555701255798, 0.05429687350988388, 0.6527777910232544], 'interactivity': False, 'content': 'Help', 'source': 'box_ocr_content_ocr'}, {'type': 'text', 'bbox': [0.02382812462747097, 0.9729166626930237, 0.076171875, 0.9944444298744202], 'interactivity': False, 'content': 'Mostly cloudy', 'source': 'box_ocr_content_ocr'}, {'type': 'icon', 'bbox': [0.03231000900268555, 0.20929764211177826, 0.6964194178581238, 0.28781506419181824], 'interactivity': True, 'content': 'Photo settings ', 'source': 'box_yolo_content_ocr'}, {'type': 'icon', 'bbox': [0.029300928115844727, 0.36193007230758667, 0.6936324834823608, 0.43950068950653076], 'interactivity': True, 'content': 'Related settings ', 'source': 'box_yolo_content_ocr'}, {'type': 'icon', 'bbox': [0.03097982332110405, 0.1340823471546173, 0.7019819021224976, 0.21152812242507935], 'interactivity': True, 'content': 'Camera settings ', 'source': 'box_yolo_content_ocr'}, {'type': 'icon', 'bbox': [0.9581998586654663, 0.9503650069236755, 0.9949334859848022, 0.9943264722824097], 'interactivity': True, 'content': '8:52 PM 3/4/2025 ', 'source': 'box_yolo_content_ocr'}, {'type': 'icon', 'bbox': [0.06277003139257431, 0.2874622642993927, 0.6923016905784607, 0.36506956815719604], 'interactivity': True, 'content': 'Video settings ', 'source': 'box_yolo_content_ocr'}, {'type': 'icon', 'bbox': [0.031483445316553116, 0.05848612263798714, 0.12059949338436127, 0.10878979414701462], 'interactivity': True, 'content': 'Settings ', 'source': 'box_yolo_content_ocr'}, {'type': 'icon', 'bbox': [0.702910304069519, 0.136135995388031, 0.96973717212677, 0.4899347126483917], 'interactivity': True, 'content': 'a person working.', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.5928689241409302, 0.9535789489746094, 0.617752730846405, 0.9974761009216309], 'interactivity': True, 'content': 'Google Chrome web browser', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.6184104084968567, 0.9540834426879883, 0.6428107023239136, 0.9973570108413696], 'interactivity': True, 'content': 'Microsoft 365', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.56634920835495, 0.9525105953216553, 0.5908659100532532, 0.9994043707847595], 'interactivity': True, 'content': 'Toggle Terminal', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.3314294219017029, 0.9555178880691528, 0.46262669563293457, 0.9926130771636963], 'interactivity': True, 'content': 'a video-related function.', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.3068317472934723, 0.953494668006897, 0.3297480642795563, 0.9931134581565857], 'interactivity': True, 'content': 'Windows', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.5390022397041321, 0.9521636962890625, 0.5659992098808289, 1.0], 'interactivity': True, 'content': 'Gallery', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.5152496099472046, 0.9520431756973267, 0.5393550992012024, 1.0], 'interactivity': True, 'content': 'Strikethrough', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.4894563555717468, 0.9508355259895325, 0.51482093334198, 1.0], 'interactivity': True, 'content': 'OneNote', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.6691263318061829, 0.9530095458030701, 0.6950151324272156, 1.0], 'interactivity': True, 'content': 'Oval Viewer', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.6435226202011108, 0.952664852142334, 0.6691875457763672, 0.9999040365219116], 'interactivity': True, 'content': 'View', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.4638824462890625, 0.950718343257904, 0.48935452103614807, 0.9978310465812683], 'interactivity': True, 'content': 'Copy', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.9204201698303223, 0.0, 0.9444247484207153, 0.03890472650527954], 'interactivity': True, 'content': 'Minimize', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.908613383769989, 0.9546249508857727, 0.9249629974365234, 0.9891508221626282], 'interactivity': True, 'content': 'WiFi', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.9248651266098022, 0.9534440636634827, 0.95196133852005, 0.9894493818283081], 'interactivity': True, 'content': 'Sound', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.8886600732803345, 0.9549524188041687, 0.9086421728134155, 0.990831732749939], 'interactivity': True, 'content': 'Refresh', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.004158693365752697, 0.0, 0.023795777931809425, 0.03347144275903702], 'interactivity': True, 'content': 'Back', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.8716408014297485, 0.9558804035186768, 0.8887779116630554, 0.9902165532112122], 'interactivity': True, 'content': 'Move Up', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.9465262293815613, 0.0, 0.9713810682296753, 0.0369967520236969], 'interactivity': True, 'content': 'Maximize', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.025004934519529343, 0.0, 0.044040076434612274, 0.032085951417684555], 'interactivity': True, 'content': 'Image', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.9739215970039368, 0.0, 0.9972831606864929, 0.037009477615356445], 'interactivity': True, 'content': 'Close', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.9942995309829712, 0.9505579471588135, 1.0, 0.9897557497024536], 'interactivity': True, 'content': 'a stop button.', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [2.6226043701171875e-06, 0.9504732489585876, 0.005570451728999615, 0.9967041611671448], 'interactivity': True, 'content': 'a stop button.', 'source': 'box_yolo_content_yolo'}, {'type': 'icon', 'bbox': [0.005290811415761709, 0.9500875473022461, 0.029621237888932228, 0.9983165264129639], 'interactivity': True, 'content': 'Notifications', 'source': 'box_yolo_content_yolo'}]
+
+    for idx, item in enumerate(parsed_content):
+        print(f"ID: {idx}, Type: {item['type']}, Content: {item['content']}")
+
 
     # Find the midpoint of the "Settings" element
-    BUTTON = "Video settings"
+    BUTTON = "Back"
     midpoint = parser.get_midpoint_by_content(parsed_content, BUTTON)
     if midpoint:
         x, y = midpoint
         print(f"{BUTTON} midpoint: x={x}, y={y}")
 
 
-    # Click on the "Settings" element
-    parser.click_element_by_content(parsed_content, BUTTON)
+    # # Click on the "Settings" element
+    # parser.click_element_by_content(parsed_content, BUTTON)

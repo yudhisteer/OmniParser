@@ -7,7 +7,7 @@ from modular import OmniParser
 parser = OmniParser()
 
 # Create a folder for screenshots if it doesn't exist
-screenshots_folder = "screenshots"
+screenshots_folder = "imgs"
 if not os.path.exists(screenshots_folder):
     os.makedirs(screenshots_folder)
 
